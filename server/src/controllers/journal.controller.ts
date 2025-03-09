@@ -4,6 +4,7 @@ import { getAuth } from '@clerk/express';
 import { journalService } from '../services/journal.service';
 import { sendSuccess } from '../utils/response.util';
 import { AppError } from '../middlewares/error.middleware';
+import { logger } from '../utils/logger.util';
 
 export const journalController = {
   /**
@@ -24,8 +25,28 @@ export const journalController = {
       
       const newEntry = await journalService.createEntry(auth.userId, content);
       
-      return sendSuccess(res, newEntry, 'Journal entry created successfully', 201);
+      // Format response to match frontend expectations
+      const formattedEntry = {
+        id: newEntry._id,
+        userId: newEntry.userId,
+        content: newEntry.content,
+        processedContent: newEntry.processedContent,
+        date: newEntry.date,
+        expGained: newEntry.expGained,
+        activities: newEntry.activities.map(activity => ({
+          id: activity._id,
+          action: activity.action,
+          category: activity.category,
+          expValue: activity.expValue,
+          date: activity.date
+        })),
+        createdAt: newEntry.createdAt,
+        updatedAt: newEntry.updatedAt
+      };
+      
+      return sendSuccess(res, formattedEntry, 'Journal entry created successfully', 201);
     } catch (error) {
+      logger.error('Error in createEntry controller:', error);
       next(error);
     }
   },
@@ -46,8 +67,28 @@ export const journalController = {
       
       const entries = await journalService.getUserEntries(auth.userId, limit, offset);
       
-      return sendSuccess(res, entries, 'Journal entries retrieved successfully');
+      // Format response to match frontend expectations
+      const formattedEntries = entries.map(entry => ({
+        id: entry._id,
+        userId: entry.userId,
+        content: entry.content,
+        processedContent: entry.processedContent,
+        date: entry.date,
+        expGained: entry.expGained,
+        activities: entry.activities.map(activity => ({
+          id: activity._id,
+          action: activity.action,
+          category: activity.category,
+          expValue: activity.expValue,
+          date: activity.date
+        })),
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt
+      }));
+      
+      return sendSuccess(res, formattedEntries, 'Journal entries retrieved successfully');
     } catch (error) {
+      logger.error('Error in getUserEntries controller:', error);
       next(error);
     }
   },
@@ -70,8 +111,28 @@ export const journalController = {
         throw new AppError('Journal entry not found', 404);
       }
       
-      return sendSuccess(res, entry, 'Journal entry retrieved successfully');
+      // Format response to match frontend expectations
+      const formattedEntry = {
+        id: entry._id,
+        userId: entry.userId,
+        content: entry.content,
+        processedContent: entry.processedContent,
+        date: entry.date,
+        expGained: entry.expGained,
+        activities: entry.activities.map(activity => ({
+          id: activity._id,
+          action: activity.action,
+          category: activity.category,
+          expValue: activity.expValue,
+          date: activity.date
+        })),
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt
+      };
+      
+      return sendSuccess(res, formattedEntry, 'Journal entry retrieved successfully');
     } catch (error) {
+      logger.error('Error in getEntry controller:', error);
       next(error);
     }
   }

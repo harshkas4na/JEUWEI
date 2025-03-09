@@ -1,17 +1,8 @@
-// src/lib/api-client.ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { ApiError } from '../utils/error'; // Adjust the path as necessary
 
-export class ApiError extends Error {
-  statusCode: number;
-  
-  constructor(message: string, statusCode: number) {
-    super(message);
-    this.statusCode = statusCode;
-    this.name = 'ApiError';
-  }
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL; // Access the environment variable
 
-// Function to make authenticated API requests
+// In your API client code (e.g., lib/api-client.ts)
 export async function fetchWithAuth(
   url: string, 
   options: RequestInit = {}, 
@@ -28,10 +19,22 @@ export async function fetchWithAuth(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Log for debugging
+  console.log('Making request with token:', token ? 'Token present' : 'No token');
+
   const response = await fetch(`${API_URL}${url}`, {
     ...options,
     headers,
   });
+
+  // Log response status for debugging
+  console.log('Response status:', response.status);
+
+  // Handle responses appropriately
+  if (response.status === 401 || response.status === 403) {
+    console.error('Authentication error');
+    // Handle auth error
+  }
 
   const data = await response.json();
 

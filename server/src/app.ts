@@ -8,6 +8,9 @@ import morgan from 'morgan';
 // Initialize Clerk
 import { clerkClient } from '@clerk/express';
 
+// Import database connection
+import connectDB from './config/database';
+
 // Import routes
 import journalRoutes from './routes/journal.routes';
 import statsRoutes from './routes/stats.routes';
@@ -16,25 +19,31 @@ import userRoutes from './routes/user.routes';
 // Import middleware
 import { errorHandler } from './middlewares/error.middleware';
 import { clerkAuthMiddleware } from './middlewares/auth.middleware';
+import { logger } from './utils/logger.util';
 
 // Check for Clerk secret key
 if (!process.env.CLERK_SECRET_KEY) {
-  console.error('Missing CLERK_SECRET_KEY environment variable');
+  logger.error('Missing CLERK_SECRET_KEY environment variable');
   process.exit(1);
 }
 
 const app: Application = express();
 const PORT: number = parseInt(process.env.PORT || '8000', 10);
 
+// Connect to MongoDB
+connectDB().catch(err => {
+  logger.error('Failed to connect to MongoDB', err);
+  process.exit(1);
+});
+
 // Middleware
 app.use(helmet());
-// Update in src/app.ts
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-  }));
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(morgan('dev'));
 app.use(express.json());
 
@@ -56,7 +65,7 @@ app.use(errorHandler);
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  logger.info(`Server is running on port ${PORT}`);
 });
 
 export default app;

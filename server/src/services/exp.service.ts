@@ -1,61 +1,12 @@
 // src/services/exp.service.ts
-import { Activity, ActivityCategory } from '../types';
-import { dataStore } from './data.service';
+import { User } from '../models/user.model';
+import { ExpHistory } from '../models/exp.model';
+import { JournalEntry, IJournalEntry, IActivity } from '../models/journal.model';
+import { AppError } from '../middlewares/error.middleware';
+import { logger } from '../utils/logger.util';
+import { ActivityCategory } from '../types';
 
 export const expService = {
-  /**
-   * Calculate EXP for activities
-   */
-  async calculateExp(userId: string, activities: Activity[]): Promise<{
-    totalExp: number;
-    categoryExp: Record<ActivityCategory, number>;
-    levelUp: boolean;
-    newLevel: number;
-  }> {
-    // Get current user stats
-    const userStats = dataStore.getUserStats(userId);
-    
-    // Calculate EXP by category
-    const categoryExp: Record<ActivityCategory, number> = {
-      financial: 0,
-      habits: 0,
-      knowledge: 0,
-      skills: 0,
-      experiences: 0,
-      network: 0
-    };
-    
-    // Sum up EXP values by category
-    activities.forEach(activity => {
-      categoryExp[activity.category] += activity.expValue;
-    });
-    
-    // Calculate total EXP gained
-    const totalExp = Object.values(categoryExp).reduce((sum, exp) => sum + exp, 0);
-    
-    // Calculate level before
-    const oldLevel = this.calculateLevel(userStats.totalExp);
-    
-    // Update user stats
-    dataStore.updateUserStats(userId, totalExp, categoryExp);
-    
-    // Get updated user stats
-    const updatedStats = dataStore.getUserStats(userId);
-    
-    // Calculate new level
-    const newLevel = this.calculateLevel(updatedStats.totalExp);
-    
-    // Check if user leveled up
-    const levelUp = newLevel > oldLevel;
-    
-    return {
-      totalExp,
-      categoryExp,
-      levelUp,
-      newLevel
-    };
-  },
-  
   /**
    * Calculate level based on total EXP
    * Formula: Level N requires (N^2 × 50) EXP
@@ -81,33 +32,137 @@ export const expService = {
   /**
    * Get user's current EXP stats
    */
-  async getUserExpStats(userId: string): Promise<{
+  async getUserExpStats(clerkUserId: string): Promise<{
     level: number;
     totalExp: number;
     nextLevelExp: number;
     progress: number;
     stats: Record<ActivityCategory, number>;
-    recentActivities: Activity[];
+    recentActivities: any[];
   }> {
-    const userStats = dataStore.getUserStats(userId);
-    const totalExp = userStats.totalExp;
-    const level = this.calculateLevel(totalExp);
-    const nextLevelExp = this.calculateRequiredExp(level + 1);
-    const currentLevelExp = this.calculateRequiredExp(level);
-    
-    // Calculate progress percentage to next level
-    const progress = ((totalExp - currentLevelExp) / (nextLevelExp - currentLevelExp)) * 100;
-    
-    // Get recent activities
-    const recentActivities = dataStore.getRecentActivities(userId, 10);
-    
-    return {
-      level,
-      totalExp,
-      nextLevelExp,
-      progress,
-      stats: userStats.stats,
-      recentActivities
-    };
+    try {
+      // Get user from database
+      const user = await User.findOne({ clerkId: clerkUserId });
+      if (!user) {
+        throw new AppError('User not found', 404);
+      }
+      
+      const totalExp = user.totalExp;
+      const level = this.calculateLevel(totalExp);
+      const nextLevelExp = this.calculateRequiredExp(level + 1);
+      const currentLevelExp = this.calculateRequiredExp(level);
+      
+      // Calculate progress percentage to next level
+      const progress = ((totalExp - currentLevelExp) / (nextLevelExp - currentLevelExp)) * 100;
+      
+      // Get recent journal entries for this user
+      const recentEntries = await JournalEntry.find({ userId: user.id })
+        .sort({ date: -1 })
+        .limit(10) as IJournalEntry[];
+      
+      // Extract activities from recent journal entries
+      const recentActivities = [];
+      for (const entry of recentEntries) {
+        for (const activity of entry.activities) {
+          if(activity._id)
+            if(entry._id)
+          recentActivities.push({
+            id: activity._id.toString(),
+            journalId: entry._id.toString(),
+            action: activity.action,
+            category: activity.category,
+            expValue: activity.expValue,
+            date: activity.date
+          });
+        }
+      }
+      
+      // Sort by date, newest first
+      recentActivities.sort((a, b) => b.date.getTime() - a.date.getTime());
+      
+      // Limit to 10 activities
+      const limitedActivities = recentActivities.slice(0, 10);
+      
+      return {
+        level,
+        totalExp,
+        nextLevelExp,
+        progress,
+        stats: user.stats,
+        recentActivities: limitedActivities
+      };
+    } catch (error) {
+      logger.error('Error getting user EXP stats:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get user's recent activities
+   */
+  async getRecentActivities(clerkUserId: string, limit = 10): Promise<any[]> {
+    try {
+      // Get user from database
+      const user = await User.findOne({ clerkId: clerkUserId });
+      if (!user) {
+        throw new AppError('User not found', 404);
+      }
+      
+      // Get recent journal entries for this user
+      const recentEntries = await JournalEntry.find({ userId: user.id })
+        .sort({ date: -1 })
+        .limit(20); // Fetch more to ensure we have enough activities
+      
+      // Extract activities from recent journal entries
+      const recentActivities = [];
+      for (const entry of recentEntries) {
+        for (const activity of entry.activities) {
+          if (activity._id) {
+            if(entry._id)
+            recentActivities.push({
+              id: activity._id.toString(),
+              journalId: entry._id.toString(),
+              action: activity.action,
+              category: activity.category,
+              expValue: activity.expValue,
+              date: activity.date
+            });
+          }
+        }
+      }
+      
+      // Sort by date, newest first
+      recentActivities.sort((a, b) => b.date.getTime() - a.date.getTime());
+      
+      // Limit to requested number of activities
+      return recentActivities.slice(0, limit);
+    } catch (error) {
+      logger.error('Error getting recent activities:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Get EXP history for a user
+   */
+  async getExpHistory(clerkUserId: string, limit = 30, offset = 0): Promise<any[]> {
+    try {
+      // Get user from database
+      const user = await User.findOne({ clerkId: clerkUserId });
+      if (!user) {
+        throw new AppError('User not found', 404);
+      }
+      
+      // Get EXP history for this user
+      const history = await ExpHistory.find({ userId: user.id })
+        .sort({ date: -1 })
+        .skip(offset)
+        .limit(limit);
+      
+      return history;
+    } catch (error) {
+      logger.error('Error getting EXP history:', error);
+      throw error;
+    }
   }
 };
